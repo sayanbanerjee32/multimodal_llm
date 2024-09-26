@@ -3,8 +3,8 @@ from multimodal_inference import MultimodalInference
 
 # Initialize the inference class
 inference = MultimodalInference(
-    model_name="path/to/your/fine-tuned/model",
-    tokenizer_name="path/to/your/fine-tuned/tokenizer"
+    model_name = 'sayanbanerjee32/multimodal-phi3-4k-instruct-llava',
+    tokenizer_name = 'sayanbanerjee32/multimodal-phi3-4k-instruct-llava'
 )
 
 def process_input(text_input, image_input, audio_input):
@@ -19,8 +19,8 @@ iface = gr.Interface(
     fn=process_input,
     inputs=[
         gr.Textbox(label="Text Input"),
-        gr.Image(label="Image Input", type="filepath"),
-        gr.Audio(label="Audio Input", type="filepath")
+        gr.Image(label="Image Input", type="filepath", source=["upload", "webcam"]),
+        gr.Audio(label="Audio Input", type="filepath", source=["upload", "microphone"])
     ],
     outputs=gr.Textbox(label="Response"),
     title="Multimodal Chat Application",
