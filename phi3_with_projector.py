@@ -1,14 +1,23 @@
 import os
 import torch
 from transformers import PreTrainedModel, AutoModelForCausalLM
+from huggingface_hub import hf_hub_download
+import torch.nn as nn
 
-class ImageProjector(torch.nn.Module):
-    def __init__(self, input_dim, output_dim):
+class ImageProjector(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_dim=1024):
         super().__init__()
-        self.linear = torch.nn.Linear(input_dim, output_dim)
+        self.layer1 = nn.Linear(input_dim, hidden_dim)
+        self.activation = nn.GELU()  # Using GELU activation, but you can experiment with others
+        self.layer2 = nn.Linear(hidden_dim, output_dim)
+        self.dropout = nn.Dropout(0.05)  # Adding dropout for regularization
 
     def forward(self, x):
-        return self.linear(x)
+        x = self.layer1(x)
+        x = self.activation(x)
+        x = self.dropout(x)
+        x = self.layer2(x)
+        return x
 
 class Phi3WithProjector(PreTrainedModel):
     supports_gradient_checkpointing = True
@@ -28,9 +37,20 @@ class Phi3WithProjector(PreTrainedModel):
         # Load the base Phi-3 model
         phi3_model = AutoModelForCausalLM.from_pretrained(pretrained_model_name_or_path, *model_args, **kwargs)
 
-        # Load the projector weights
-        projector_path = os.path.join(pretrained_model_name_or_path, "image_projector.pth")
-        if os.path.exists(projector_path):
+        # Determine if it's a local path or a Hugging Face model ID
+        is_local = os.path.isdir(pretrained_model_name_or_path)
+
+        if is_local:
+            projector_path = os.path.join(pretrained_model_name_or_path, "image_projector.pth")
+        else:
+            try:
+                # Try to download the projector weights from the Hugging Face Hub
+                projector_path = hf_hub_download(repo_id=pretrained_model_name_or_path, filename="image_projector.pth")
+            except Exception as e:
+                print(f"Failed to download projector weights: {e}")
+                projector_path = None
+
+        if projector_path and os.path.exists(projector_path):
             projector_state_dict = torch.load(projector_path, map_location=phi3_model.device)
 
             # Check if the state dict has the expected structure
@@ -49,7 +69,7 @@ class Phi3WithProjector(PreTrainedModel):
             projector.load_state_dict(projector_state_dict, strict=False)
             print(f"Loaded projector with input_dim={input_dim}, output_dim={output_dim}")
         else:
-            print(f"Projector weights not found at {projector_path}. Initializing with default dimensions.")
+            print(f"Projector weights not found. Initializing with default dimensions.")
             input_dim = 512  # Default CLIP embedding size
             output_dim = phi3_model.config.hidden_size
             projector = ImageProjector(input_dim, output_dim)
