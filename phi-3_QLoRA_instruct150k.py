@@ -114,15 +114,23 @@ print("Applying tokenization and preparing the dataset...")
 def prepare_dataset(examples):
     image_embeddings = torch.stack([torch.tensor(item) for item in examples['image_embedding']])
 
-    conversations = [
-        [{"role": "system", "content": "You are a helpful assistant."}] +
-        [{"role": "user" if msg['from'] == 'human' else "assistant", "content": msg['value']}
-         for msg in conv]
-        for conv in examples['conversation']
-    ]
+    conversations = []
+    for conv in examples['conversation']:
+        dialogue = [{"role": "system", "content": "You are a helpful assistant."}]
+        
+        for i, message in enumerate(conv):
+            if message['from'] == 'human':
+                content = message['value']
+                if i == 0:
+                    content = f"Given the following information, provide a detailed and accurate response:\n{content}\n[An image is provided for this task.]\n"
+                dialogue.append({"role": "user", "content": content})
+            elif message['from'] == 'gpt':
+                dialogue.append({"role": "assistant", "content": message['value']})
+        
+        conversations.append(dialogue)
 
     tokenized_conversations = tokenizer.apply_chat_template(conversations,
-                                                             return_tensors='pt', padding=True)
+                                                            return_tensors='pt', padding=True)
 
     return {
         "image_embeddings": image_embeddings,
@@ -130,6 +138,38 @@ def prepare_dataset(examples):
         "attention_mask": torch.ones_like(tokenized_conversations),
         "labels": tokenized_conversations.clone()
     }
+
+# Test the prepare_dataset function with a real training example
+def test_prepare_dataset():
+    # Get a batch of examples from the dataset
+    batch_size = 1  # You can adjust this as needed
+    sample_batch = hf_dataset[0:batch_size]
+
+    print("Original conversations:")
+    # for i, sample in enumerate(sample_batch):
+    #     print(f"\nSample {i + 1}:")
+    for message in sample_batch['conversation'][0]:
+        print(f"{message['from']}: {message['value']}")
+
+    # Process the sample batch
+    result = prepare_dataset(sample_batch)
+
+    # Print the structure of the result
+    print("\nResult keys:", result.keys())
+    print("Image embeddings shape:", result['image_embeddings'].shape)
+    print("Input IDs shape:", result['input_ids'].shape)
+    print("Attention mask shape:", result['attention_mask'].shape)
+    print("Labels shape:", result['labels'].shape)
+
+    # Decode and print the restructured conversations
+    for i in range(batch_size):
+        decoded_input = tokenizer.decode(result['input_ids'][i])
+        print(f"\nRestructured input for sample {i + 1}:")
+        print(decoded_input)
+
+        
+# Run the test
+test_prepare_dataset()
 
 
 hf_dataset_mapped = hf_dataset.map(
@@ -162,7 +202,7 @@ type(dataset_dict['test'][0]['attention_mask'])
 """### QLoRA set up"""
 
 # new_model = "ms-phi3-custom"
-lora_r = 16
+lora_r = 64
 lora_alpha = 16
 lora_dropout = 0.05
 use_4bit = True
@@ -175,7 +215,7 @@ fp16 = False
 bf16 = False
 per_device_train_batch_size = 4
 per_device_eval_batch_size = 2
-gradient_accumulation_steps = 4
+gradient_accumulation_steps = 8
 gradient_checkpointing = True
 max_grad_norm = 0.3
 learning_rate = 5e-4
@@ -185,10 +225,10 @@ lr_scheduler_type = "constant"
 max_steps = -1
 warmup_ratio = 0.03
 group_by_length = True
-save_steps = 5 #25
-logging_steps = 5 #25
-eval_steps = 10 # Evaluate every 25 steps
-max_seq_length = 1024
+save_steps = 25
+logging_steps = 25
+eval_steps = 25 # Evaluate every 25 steps
+max_seq_length = 512
 packing = False
 device_map = {"": 0}
 
@@ -432,12 +472,12 @@ image_embedding = sample['image_embeddings']
 
 
 def get_first_user_input(decoded_text):
-    # Find the position of the first question mark
-    question_mark_pos = decoded_text.find('?')
+    # Find the position of the first <|assistant|> tag
+    assistant_pos = decoded_text.find('<|assistant|>')
 
-    # If a question mark is found, truncate the text
-    if question_mark_pos != -1:
-        return decoded_text[:question_mark_pos + 1]  # Include the question mark
+    # If <|assistant|> is found, truncate the text
+    if assistant_pos != -1:
+        return decoded_text[:assistant_pos].strip()
     else:
         return decoded_text.strip()
 
@@ -451,12 +491,20 @@ input_text = get_first_user_input(full_text)
 generated_text = generator.generate(
     input_text,
     image_embedding=image_embedding,
-    max_length=200,
+    # max_length=200,
+    # num_return_sequences=1,
+    # do_sample=True,
+    # temperature=0.7,
+    # top_k=50,
+    # top_p=0.95,
+    max_new_tokens=150,
     num_return_sequences=1,
     do_sample=True,
-    temperature=0.7,
-    top_k=50,
-    top_p=0.95,
+    temperature=0.8,
+    top_k=40,
+    top_p=0.9,
+    repetition_penalty=1.2,
+    no_repeat_ngram_size=3,
 )
 
 print("Input text:")
@@ -527,6 +575,7 @@ api.upload_folder(
     folder_path=merged_model_path,
     repo_id="sayanbanerjee32/multimodal-phi3-4k-instruct-llava",
     repo_type="model",
+    delete_patterns = "*.safetensors",
 )
 print("Model uploaded to Hugging Face Hub")
 
