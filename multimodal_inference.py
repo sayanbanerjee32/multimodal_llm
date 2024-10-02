@@ -1,24 +1,60 @@
 import torch
 from PIL import Image
 import clip
-from transformers import AutoTokenizer
-from phi3_with_projector import Phi3WithProjector
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel, PeftConfig
+from phi3_with_projector import Phi3WithProjector, ImageProjector
 from audio_pipeline import AudioTranscriptionPipeline
+import os
 
 class MultimodalInference:
-    def __init__(self, model_name, tokenizer_name, clip_model_name="ViT-B/32", debug=False):
+    def __init__(self, model_name, tokenizer_name, peft_model_path=None, clip_model_name="ViT-B/32", debug=False):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.debug = debug
 
-        self.model = Phi3WithProjector.from_pretrained(
-            model_name,
-            debug=self.debug
-        ).to(self.device)
+        # Load the tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
+        # Load the model
+        if peft_model_path:
+            # If a PEFT adapter is provided, load the base model and merge with the adapter
+            base_model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                low_cpu_mem_usage=True
+            )
+            peft_model = PeftModel.from_pretrained(base_model, peft_model_path)
+            merged_model = peft_model.merge_and_unload()
+            
+            # Load the projector separately if it exists
+            projector_path = f"{peft_model_path}/projector.pth"
+            if os.path.exists(projector_path):
+                projector_state_dict = torch.load(projector_path, map_location=self.device)
+                input_dim = projector_state_dict['linear.weight'].size(1)
+                output_dim = projector_state_dict['linear.weight'].size(0)
+                projector = ImageProjector(input_dim, output_dim)
+                projector.load_state_dict(projector_state_dict)
+            else:
+                # If projector doesn't exist, initialize with default dimensions
+                input_dim = 512  # Default CLIP embedding size
+                output_dim = merged_model.config.hidden_size
+                projector = ImageProjector(input_dim, output_dim)
+            
+            # Create Phi3WithProjector instance
+            self.model = Phi3WithProjector(merged_model, projector, debug=self.debug)
+        else:
+            # If no PEFT adapter is provided, load the pre-merged model
+            self.model = Phi3WithProjector.from_pretrained(
+                model_name,
+                debug=self.debug
+            )
+
+        self.model = self.model.to(self.device)
+
+        # Load CLIP model
         self.clip_model, self.clip_preprocess = clip.load(clip_model_name, device=self.device)
 
-        # Initialize the audio transcription pipeline
+        # Initialize the audio transcription pipeline if needed
         # self.audio_pipeline = AudioTranscriptionPipeline()
 
     def debug_print(self, *args, **kwargs):

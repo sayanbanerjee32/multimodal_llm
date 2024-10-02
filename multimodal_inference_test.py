@@ -112,21 +112,42 @@ import gc
 gc.collect()
 torch.cuda.empty_cache()
 
-# Initialize the inference class
-inference = MultimodalInference(
-    # model_name='/content/drive/MyDrive/multimodel_llm/merged_phi3_llava_model',
-    # tokenizer_name='/content/drive/MyDrive/multimodel_llm/merged_phi3_llava_model',
-    model_name = 'sayanbanerjee32/multimodal-phi3-4k-instruct-llava',
-    tokenizer_name = 'sayanbanerjee32/multimodal-phi3-4k-instruct-llava'
-
+# Initialize the inference class with pre-merged model
+hf_inference = MultimodalInference(
+    model_name='sayanbanerjee32/multimodal-phi3-4k-instruct-llava',
+    tokenizer_name='sayanbanerjee32/multimodal-phi3-4k-instruct-llava'
 )
 
-# Perform inference
-generated_text = inference.multimodal_inference(
+# Perform inference with pre-merged model
+generated_text_merged = hf_inference.multimodal_inference(
     text_input=text,
     image_path=image_path
 )
 
-print("Generated text:")
-print(generated_text)
+print("Generated text (pre-merged model):")
+print(generated_text_merged)
+
+# Initialize a new inference class with PEFT adapter
+peft_inference = MultimodalInference(
+    model_name='microsoft/Phi-3-mini-4k-instruct',
+    tokenizer_name='microsoft/Phi-3-mini-4k-instruct',
+    peft_model_path='/content/drive/MyDrive/multimodel_llm/phi3_checkpoints/checkpoint-150',  # Adjust this path as needed
+    debug=True  # Enable debug mode to see more information
+)
+
+# Perform inference with PEFT adapter
+generated_text_peft = peft_inference.multimodal_inference(
+    text_input=text,
+    image_path=image_path
+)
+
+print("\nGenerated text (PEFT adapter):")
+print(generated_text_peft)
+
+# Compare the outputs
+print("\nComparison:")
+print("Pre-merged model output length:", len(generated_text_merged))
+print("PEFT adapter model output length:", len(generated_text_peft))
+
+# You can add more detailed comparison metrics here if needed
 

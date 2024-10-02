@@ -112,23 +112,31 @@ print(f"Total samples in dataset: {len(hf_dataset)}")
 print("Applying tokenization and preparing the dataset...")
 
 def prepare_dataset(examples):
-    image_embeddings = torch.stack([torch.tensor(item) for item in examples['image_embedding']])
-
+    image_embeddings = []
     conversations = []
-    for conv in examples['conversation']:
-        dialogue = [{"role": "system", "content": "You are a helpful assistant."}]
+    
+    for idx, conv in enumerate(examples['conversation']):
+        image_embedding = torch.tensor(examples['image_embedding'][idx])
+        dialogue_pairs = []
         
-        for i, message in enumerate(conv):
-            if message['from'] == 'human':
-                content = message['value']
-                if i == 0:
-                    content = f"Given the following information, provide a detailed and accurate response:\n{content}\n[An image is provided for this task.]\n"
-                dialogue.append({"role": "user", "content": content})
-            elif message['from'] == 'gpt':
-                dialogue.append({"role": "assistant", "content": message['value']})
+        for i in range(0, len(conv), 2):
+            if i + 1 < len(conv):  # Ensure we have a pair
+                human_msg = conv[i]['value'].replace('<image>', '').strip()
+                gpt_msg = conv[i + 1]['value']
+                
+                dialogue = [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": f"Given the following information, provide a detailed and accurate response:\n{human_msg}\n[An image is provided for this task.]\n"},
+                    {"role": "assistant", "content": gpt_msg}
+                ]
+                
+                dialogue_pairs.append(dialogue)
+                image_embeddings.append(image_embedding)
         
-        conversations.append(dialogue)
-
+        conversations.extend(dialogue_pairs)
+    
+    image_embeddings = torch.stack(image_embeddings)
+    
     tokenized_conversations = tokenizer.apply_chat_template(conversations,
                                                             return_tensors='pt', padding=True)
 
@@ -146,8 +154,6 @@ def test_prepare_dataset():
     sample_batch = hf_dataset[0:batch_size]
 
     print("Original conversations:")
-    # for i, sample in enumerate(sample_batch):
-    #     print(f"\nSample {i + 1}:")
     for message in sample_batch['conversation'][0]:
         print(f"{message['from']}: {message['value']}")
 
@@ -161,11 +167,25 @@ def test_prepare_dataset():
     print("Attention mask shape:", result['attention_mask'].shape)
     print("Labels shape:", result['labels'].shape)
 
-    # Decode and print the restructured conversations
+    # Decode and print the restructured conversations and labels
     for i in range(batch_size):
         decoded_input = tokenizer.decode(result['input_ids'][i])
+        decoded_labels = tokenizer.decode(result['labels'][i])
+        
         print(f"\nRestructured input for sample {i + 1}:")
         print(decoded_input)
+        
+        print(f"\nLabels for sample {i + 1}:")
+        print(decoded_labels)
+        
+        # Optionally, you can print a more readable version of the labels
+        print("\nReadable labels (non-padding tokens):")
+        readable_labels = tokenizer.decode([token for token in result['labels'][i] if token != -100])
+        print(readable_labels)
+
+    # Optionally, you can print attention mask to see where it's applied
+    print("\nAttention Mask:")
+    print(result['attention_mask'][0])
 
         
 # Run the test
@@ -197,12 +217,11 @@ print(f"Input IDs shape: {len(sample['input_ids'])}")
 print(f"Attention mask shape: {len(sample['attention_mask'])}")
 print(f"Labels shape: {len(sample['labels'])}")
 
-type(dataset_dict['test'][0]['attention_mask'])
 
 """### QLoRA set up"""
 
 # new_model = "ms-phi3-custom"
-lora_r = 64
+lora_r = 32
 lora_alpha = 16
 lora_dropout = 0.05
 use_4bit = True
@@ -213,8 +232,8 @@ output_dir = "./results"
 num_train_epochs = 1
 fp16 = False
 bf16 = False
-per_device_train_batch_size = 4
-per_device_eval_batch_size = 2
+per_device_train_batch_size = 8
+per_device_eval_batch_size = 4
 gradient_accumulation_steps = 8
 gradient_checkpointing = True
 max_grad_norm = 0.3
@@ -228,7 +247,7 @@ group_by_length = True
 save_steps = 25
 logging_steps = 25
 eval_steps = 25 # Evaluate every 25 steps
-max_seq_length = 512
+max_seq_length = 256
 packing = False
 device_map = {"": 0}
 
