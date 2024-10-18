@@ -8,9 +8,13 @@ class ImageProjector(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim=1024):
         super().__init__()
         self.layer1 = nn.Linear(input_dim, hidden_dim)
-        self.activation = nn.GELU()  # Using GELU activation, but you can experiment with others
+        self.activation = nn.GELU()
         self.layer2 = nn.Linear(hidden_dim, output_dim)
-        self.dropout = nn.Dropout(0.05)  # Adding dropout for regularization
+        self.dropout = nn.Dropout(0.05)
+        
+        # Store initial weights for both layers
+        self.register_buffer('initial_weights1', self.layer1.weight.data.clone())
+        self.register_buffer('initial_weights2', self.layer2.weight.data.clone())
 
     def forward(self, x):
         x = self.layer1(x)
@@ -19,8 +23,22 @@ class ImageProjector(nn.Module):
         x = self.layer2(x)
         return x
 
+    def get_weight_change(self):
+        current_weights1 = self.layer1.weight.data
+        current_weights2 = self.layer2.weight.data
+        
+        # Ensure all tensors are on the same device
+        device = current_weights1.device
+        initial_weights1 = self.initial_weights1.to(device)
+        initial_weights2 = self.initial_weights2.to(device)
+        
+        weight_diff1 = torch.norm(current_weights1 - initial_weights1).item()
+        weight_diff2 = torch.norm(current_weights2 - initial_weights2).item()
+        return weight_diff1 + weight_diff2  # Total weight change across both layers
+
 class Phi3WithProjector(PreTrainedModel):
     supports_gradient_checkpointing = True
+    _supports_sdpa = True # Add this line
 
     def __init__(self, phi3_model, projector, debug=False):
         super().__init__(phi3_model.config)
@@ -52,7 +70,6 @@ class Phi3WithProjector(PreTrainedModel):
 
         if projector_path and os.path.exists(projector_path):
             projector_state_dict = torch.load(projector_path, map_location=phi3_model.device)
-
             # Check if the state dict has the expected structure
             if 'linear.weight' in projector_state_dict:
                 input_dim = projector_state_dict['linear.weight'].size(1)
@@ -74,43 +91,56 @@ class Phi3WithProjector(PreTrainedModel):
             output_dim = phi3_model.config.hidden_size
             projector = ImageProjector(input_dim, output_dim)
 
+        # Move the projector to the same device as phi3_model
+        projector = projector.to(phi3_model.device)
+
         # Create and return the Phi3WithProjector instance
         model = cls(phi3_model, projector, debug=debug)
         return model
 
     def save_pretrained(self, save_directory):
+        print(f"Saving model to {save_directory}")
+        
         # Save the base model
         self.phi3.save_pretrained(save_directory)
 
         # Save the projector weights
         projector_path = os.path.join(save_directory, "image_projector.pth")
-        torch.save(self.projector.state_dict(), projector_path)
+        projector_state = self.projector.state_dict()
+        print(f"Projector weights stats before saving:")
+        for name, param in projector_state.items():
+            print(f"  {name}: mean={param.mean().item():.4f}, std={param.std().item():.4f}")
+        torch.save(projector_state, projector_path)
 
         # Save the config
         self.config.save_pretrained(save_directory)
 
-    def forward(self, input_ids=None, attention_mask=None, image_embeddings=None, labels=None, past_key_values=None, **kwargs):
+        print(f"Model saved successfully to {save_directory}")
+
+    def forward(self, input_ids=None, attention_mask=None, labels=None, image_embeddings=None, past_key_values=None, **kwargs):
         device = next(self.parameters()).device
 
         if image_embeddings is not None:
-            image_embeddings = image_embeddings.to(device)
-            projected_images = self.projector(image_embeddings)
-            projected_images = projected_images.unsqueeze(1)
-            self.debug_print(f"forward projected_images: {projected_images.size()}")
+            projected_embeddings = self.projector(image_embeddings)
+            # Ensure projected_embeddings requires grad
+            if not projected_embeddings.requires_grad:
+                projected_embeddings.requires_grad_(True)
+            projected_embeddings = projected_embeddings.unsqueeze(1)
+            self.debug_print(f"forward projected_embeddings: {projected_embeddings.size()}")
 
             if past_key_values is None:  # This is the first forward pass
                 self.debug_print(f"forward before: {attention_mask.size() if attention_mask is not None else None}")
                 if 'inputs_embeds' in kwargs and kwargs['inputs_embeds'] is not None:
                     inputs_embeds = kwargs['inputs_embeds']
                     self.debug_print(f"forward before inputs_embeds: {inputs_embeds.size()}")
-                    inputs_embeds = torch.cat([projected_images, inputs_embeds], dim=1)
+                    inputs_embeds = torch.cat([projected_embeddings, inputs_embeds], dim=1)
                     kwargs['inputs_embeds'] = inputs_embeds
                     self.debug_print(f"forward after inputs_embeds: {inputs_embeds.size()}")
                 elif input_ids is not None:
                     self.debug_print(f"forward input_ids: {input_ids.size()}")
                     inputs_embeds = self.get_input_embeddings()(input_ids.to(device))
                     self.debug_print(f"forward before inputs_embeds: {inputs_embeds.size()}")
-                    inputs_embeds = torch.cat([projected_images, inputs_embeds], dim=1)
+                    inputs_embeds = torch.cat([projected_embeddings, inputs_embeds], dim=1)
                     self.debug_print(f"forward after inputs_embeds: {inputs_embeds.size()}")
                     kwargs['inputs_embeds'] = inputs_embeds
                     input_ids = None  # Set to None to avoid conflict
