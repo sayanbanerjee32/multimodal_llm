@@ -8,14 +8,14 @@ Original file is located at
 """
 
 !pip install git+https://github.com/openai/CLIP.git
-!pip install transformers==4.44.2
-!pip install -Uq accelerate
+!pip install transformers==4.45.2
+!pip install -Uq accelerate peft bitsandbytes
 
 # from google.colab import drive
 # drive.mount('/content/drive')
 
 import torch
-from transformers import AutoTokenizer
+transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedModel, BitsAndBytesConfig
 # from audio_pipeline import AudioTranscriptionPipeline
 import clip
 from PIL import Image
@@ -114,8 +114,10 @@ torch.cuda.empty_cache()
 
 # Initialize the inference class with pre-merged model
 hf_inference = MultimodalInference(
-    model_name='sayanbanerjee32/multimodal-phi3-4k-instruct-llava',
-    tokenizer_name='sayanbanerjee32/multimodal-phi3-4k-instruct-llava'
+    model_name= "sayanbanerjee32/multimodal-phi3_5-mini-instruct-llava",
+    # 'sayanbanerjee32/multimodal-phi3-4k-instruct-llava',
+    tokenizer_name="sayanbanerjee32/multimodal-phi3_5-mini-instruct-llava",
+    debug = True
 )
 
 # Perform inference with pre-merged model
@@ -128,11 +130,23 @@ print("Generated text (pre-merged model):")
 print(generated_text_merged)
 
 # Initialize a new inference class with PEFT adapter
+bnb_4bit_compute_dtype = "float16"
+bnb_4bit_quant_type = "nf4"
+use_4bit = True
+use_nested_quant = False
+compute_dtype = getattr(torch, bnb_4bit_compute_dtype)
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=use_4bit,
+    bnb_4bit_quant_type=bnb_4bit_quant_type,
+    bnb_4bit_compute_dtype=compute_dtype,
+    bnb_4bit_use_double_quant=use_nested_quant,
+)
 peft_inference = MultimodalInference(
-    model_name='microsoft/Phi-3-mini-4k-instruct',
-    tokenizer_name='microsoft/Phi-3-mini-4k-instruct',
-    peft_model_path='/content/drive/MyDrive/multimodel_llm/phi3_checkpoints/checkpoint-150',  # Adjust this path as needed
-    debug=True  # Enable debug mode to see more information
+    model_name='microsoft/Phi-3.5-mini-instruct',
+    tokenizer_name='microsoft/Phi-3.5-mini-instruct',
+    peft_model_path="/content/drive/MyDrive/multimodal_llm/phi-3_5/multimodal-phi3_5-mini-instruct-llava_adapter/checkpoint-12",  # Adjust this path as needed
+    bnb_config=bnb_config,  # Pass the bnb_config to the inference class
+    debug=False  # Enable debug mode to see more information
 )
 
 # Perform inference with PEFT adapter

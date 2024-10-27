@@ -17,6 +17,13 @@ class ImageProjector(nn.Module):
         self.register_buffer('initial_weights2', self.layer2.weight.data.clone())
 
     def forward(self, x):
+        # # Print dtypes
+        # print(f"Input dtype: {x.dtype}")
+        # print(f"Layer1 weight dtype: {self.layer1.weight.dtype}")
+        # print(f"Layer1 bias dtype: {self.layer1.bias.dtype}")
+        # print(f"Layer2 weight dtype: {self.layer2.weight.dtype}")
+        # print(f"Layer2 bias dtype: {self.layer2.bias.dtype}")
+
         x = self.layer1(x)
         x = self.activation(x)
         x = self.dropout(x)
@@ -82,14 +89,27 @@ class Phi3WithProjector(PreTrainedModel):
 
             projector = ImageProjector(input_dim, output_dim)
 
-            # Try to load the state dict, ignoring mismatched keys
+            # Convert projector weights and biases to the same dtype as the main model
+            target_dtype = kwargs.get('torch_dtype', torch.float32)
+            projector_state_dict = {k: v.to(target_dtype) for k, v in projector_state_dict.items()}
+
+            # Load the state dict with converted weights and biases
             projector.load_state_dict(projector_state_dict, strict=False)
-            print(f"Loaded projector with input_dim={input_dim}, output_dim={output_dim}")
+            
+            # Ensure all parameters (including biases) are in the correct dtype
+            for param in projector.parameters():
+                param.data = param.data.to(target_dtype)
+
+            print(f"Loaded projector with input_dim={input_dim}, output_dim={output_dim}, dtype={target_dtype}")
         else:
             print(f"Projector weights not found. Initializing with default dimensions.")
             input_dim = 512  # Default CLIP embedding size
             output_dim = phi3_model.config.hidden_size
+            target_dtype = kwargs.get('torch_dtype', torch.float32)
             projector = ImageProjector(input_dim, output_dim)
+            # Ensure all parameters (including biases) are in the correct dtype
+            for param in projector.parameters():
+                param.data = param.data.to(target_dtype)
 
         # Move the projector to the same device as phi3_model
         projector = projector.to(phi3_model.device)
