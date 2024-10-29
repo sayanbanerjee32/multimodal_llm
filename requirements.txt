@@ -1,6 +1,14 @@
 torch>=2.0.0
-transformers==4.44.2
+transformers==4.45.2
 Pillow>=9.0.0
 clip @ git+https://github.com/openai/CLIP.git
-librosa>=0.10.0
+peft>=0.7.0
+accelerate>=0.25.0
+bitsandbytes>=0.41.0
 numpy>=1.21.0
+tqdm>=4.65.0
+
+# Audio processing dependencies
+librosa>=0.10.0
+soundfile>=0.12.0  # Required by librosa for audio file I/O
+numba>=0.57.0  # Required by librosa for faster processing

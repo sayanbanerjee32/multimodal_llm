@@ -3,6 +3,7 @@ import torch
 from transformers import PreTrainedModel, AutoModelForCausalLM
 from huggingface_hub import hf_hub_download
 import torch.nn as nn
+import torch.cuda.amp as amp
 
 class ImageProjector(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim=1024):
@@ -17,7 +18,7 @@ class ImageProjector(nn.Module):
         self.register_buffer('initial_weights2', self.layer2.weight.data.clone())
 
     def forward(self, x):
-        # # Print dtypes
+        # Print dtypes
         # print(f"Input dtype: {x.dtype}")
         # print(f"Layer1 weight dtype: {self.layer1.weight.dtype}")
         # print(f"Layer1 bias dtype: {self.layer1.bias.dtype}")
@@ -90,26 +91,26 @@ class Phi3WithProjector(PreTrainedModel):
             projector = ImageProjector(input_dim, output_dim)
 
             # Convert projector weights and biases to the same dtype as the main model
-            target_dtype = kwargs.get('torch_dtype', torch.float32)
-            projector_state_dict = {k: v.to(target_dtype) for k, v in projector_state_dict.items()}
+            # target_dtype = kwargs.get('torch_dtype', torch.float32)
+            # projector_state_dict = {k: v.to(target_dtype) for k, v in projector_state_dict.items()}
 
             # Load the state dict with converted weights and biases
             projector.load_state_dict(projector_state_dict, strict=False)
             
-            # Ensure all parameters (including biases) are in the correct dtype
-            for param in projector.parameters():
-                param.data = param.data.to(target_dtype)
+            # # Ensure all parameters (including biases) are in the correct dtype
+            # for param in projector.parameters():
+            #     param.data = param.data.to(target_dtype)
 
-            print(f"Loaded projector with input_dim={input_dim}, output_dim={output_dim}, dtype={target_dtype}")
+            print(f"Loaded projector with input_dim={input_dim}, output_dim={output_dim}")#, dtype={target_dtype}")
         else:
             print(f"Projector weights not found. Initializing with default dimensions.")
             input_dim = 512  # Default CLIP embedding size
             output_dim = phi3_model.config.hidden_size
-            target_dtype = kwargs.get('torch_dtype', torch.float32)
+            # target_dtype = kwargs.get('torch_dtype', torch.float32)
             projector = ImageProjector(input_dim, output_dim)
-            # Ensure all parameters (including biases) are in the correct dtype
-            for param in projector.parameters():
-                param.data = param.data.to(target_dtype)
+            # # Ensure all parameters (including biases) are in the correct dtype
+            # for param in projector.parameters():
+            #     param.data = param.data.to(target_dtype)
 
         # Move the projector to the same device as phi3_model
         projector = projector.to(phi3_model.device)
@@ -138,65 +139,66 @@ class Phi3WithProjector(PreTrainedModel):
         print(f"Model saved successfully to {save_directory}")
 
     def forward(self, input_ids=None, attention_mask=None, labels=None, image_embeddings=None, past_key_values=None, **kwargs):
-        device = next(self.parameters()).device
+        with amp.autocast():
+            device = next(self.parameters()).device
 
-        if image_embeddings is not None:
-            projected_embeddings = self.projector(image_embeddings)
-            # Ensure projected_embeddings requires grad
-            if not projected_embeddings.requires_grad:
-                projected_embeddings.requires_grad_(True)
-            projected_embeddings = projected_embeddings.unsqueeze(1)
-            self.debug_print(f"forward projected_embeddings: {projected_embeddings.size()}")
+            if image_embeddings is not None:
+                projected_embeddings = self.projector(image_embeddings)
+                # Ensure projected_embeddings requires grad
+                if not projected_embeddings.requires_grad:
+                    projected_embeddings.requires_grad_(True)
+                projected_embeddings = projected_embeddings.unsqueeze(1)
+                self.debug_print(f"forward projected_embeddings: {projected_embeddings.size()}")
 
-            if past_key_values is None:  # This is the first forward pass
-                self.debug_print(f"forward before: {attention_mask.size() if attention_mask is not None else None}")
-                if 'inputs_embeds' in kwargs and kwargs['inputs_embeds'] is not None:
-                    inputs_embeds = kwargs['inputs_embeds']
-                    self.debug_print(f"forward before inputs_embeds: {inputs_embeds.size()}")
-                    inputs_embeds = torch.cat([projected_embeddings, inputs_embeds], dim=1)
-                    kwargs['inputs_embeds'] = inputs_embeds
-                    self.debug_print(f"forward after inputs_embeds: {inputs_embeds.size()}")
-                elif input_ids is not None:
-                    self.debug_print(f"forward input_ids: {input_ids.size()}")
-                    inputs_embeds = self.get_input_embeddings()(input_ids.to(device))
-                    self.debug_print(f"forward before inputs_embeds: {inputs_embeds.size()}")
-                    inputs_embeds = torch.cat([projected_embeddings, inputs_embeds], dim=1)
-                    self.debug_print(f"forward after inputs_embeds: {inputs_embeds.size()}")
-                    kwargs['inputs_embeds'] = inputs_embeds
-                    input_ids = None  # Set to None to avoid conflict
+                if past_key_values is None:  # This is the first forward pass
+                    self.debug_print(f"forward before: {attention_mask.size() if attention_mask is not None else None}")
+                    if 'inputs_embeds' in kwargs and kwargs['inputs_embeds'] is not None:
+                        inputs_embeds = kwargs['inputs_embeds']
+                        self.debug_print(f"forward before inputs_embeds: {inputs_embeds.size()}")
+                        inputs_embeds = torch.cat([projected_embeddings, inputs_embeds], dim=1)
+                        kwargs['inputs_embeds'] = inputs_embeds
+                        self.debug_print(f"forward after inputs_embeds: {inputs_embeds.size()}")
+                    elif input_ids is not None:
+                        self.debug_print(f"forward input_ids: {input_ids.size()}")
+                        inputs_embeds = self.get_input_embeddings()(input_ids.to(device))
+                        self.debug_print(f"forward before inputs_embeds: {inputs_embeds.size()}")
+                        inputs_embeds = torch.cat([projected_embeddings, inputs_embeds], dim=1)
+                        self.debug_print(f"forward after inputs_embeds: {inputs_embeds.size()}")
+                        kwargs['inputs_embeds'] = inputs_embeds
+                        input_ids = None  # Set to None to avoid conflict
 
-                if attention_mask is not None:
-                    attention_mask = torch.cat([torch.ones(image_embeddings.size(0), 1, device=device), attention_mask.to(device)], dim=1)
-                else:
-                    attention_mask = torch.ones(image_embeddings.size(0), inputs_embeds.size(1), device=device)
+                    if attention_mask is not None:
+                        attention_mask = torch.cat([torch.ones(image_embeddings.size(0), 1, device=device), attention_mask.to(device)], dim=1)
+                    else:
+                        attention_mask = torch.ones(image_embeddings.size(0), inputs_embeds.size(1), device=device)
 
-                if labels is not None:
-                    # Adjust labels to match the new sequence length
-                    labels = torch.cat([torch.full((labels.size(0), 1), -100, device=device), labels], dim=1)
+                    if labels is not None:
+                        # Adjust labels to match the new sequence length
+                        labels = torch.cat([torch.full((labels.size(0), 1), -100, device=device), labels], dim=1)
 
-        if labels is not None:
-            labels = labels.to(device)
+            if labels is not None:
+                labels = labels.to(device)
 
-        # Determine sequence length
-        if 'inputs_embeds' in kwargs and kwargs['inputs_embeds'] is not None:
-            seq_length = kwargs['inputs_embeds'].size(1)
-        elif input_ids is not None:
-            seq_length = input_ids.size(1)
-        else:
-            seq_length = attention_mask.size(1) if attention_mask is not None else None
+            # Determine sequence length
+            if 'inputs_embeds' in kwargs and kwargs['inputs_embeds'] is not None:
+                seq_length = kwargs['inputs_embeds'].size(1)
+            elif input_ids is not None:
+                seq_length = input_ids.size(1)
+            else:
+                seq_length = attention_mask.size(1) if attention_mask is not None else None
 
-        if seq_length is None:
-            raise ValueError("Unable to determine sequence length. Provide either input_ids, inputs_embeds, or attention_mask.")
+            if seq_length is None:
+                raise ValueError("Unable to determine sequence length. Provide either input_ids, inputs_embeds, or attention_mask.")
 
-        # Ensure attention_mask matches the sequence length
-        if attention_mask is not None:
-            attention_mask = attention_mask[:, :seq_length]
+            # Ensure attention_mask matches the sequence length
+            if attention_mask is not None:
+                attention_mask = attention_mask[:, :seq_length]
 
-        self.debug_print(f"forward final: input_ids shape: {input_ids.shape if input_ids is not None else None}")
-        self.debug_print(f"forward final: attention_mask shape: {attention_mask.shape if attention_mask is not None else None}")
-        self.debug_print(f"forward final: inputs_embeds shape: {kwargs.get('inputs_embeds', {}).shape if kwargs.get('inputs_embeds') is not None else None}")
+            self.debug_print(f"forward final: input_ids shape: {input_ids.shape if input_ids is not None else None}")
+            self.debug_print(f"forward final: attention_mask shape: {attention_mask.shape if attention_mask is not None else None}")
+            self.debug_print(f"forward final: inputs_embeds shape: {kwargs.get('inputs_embeds', {}).shape if kwargs.get('inputs_embeds') is not None else None}")
 
-        return self.phi3(input_ids=input_ids, attention_mask=attention_mask, labels=labels, past_key_values=past_key_values, **kwargs)
+            return self.phi3(input_ids=input_ids, attention_mask=attention_mask, labels=labels, past_key_values=past_key_values, **kwargs)
 
     def prepare_inputs_for_generation(self, input_ids, past=None, attention_mask=None, **kwargs):
         inputs = self.phi3.prepare_inputs_for_generation(input_ids, past=past, attention_mask=attention_mask, **kwargs)

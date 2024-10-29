@@ -510,17 +510,17 @@ class SaveLatestCheckpointAndLoraCallback(TrainerCallback):
 
             print(f"Saved checkpoint to {checkpoint_dir}")
 
-            # Upload the checkpoint to Hugging Face Hub
-            self.upload_to_hub(checkpoint_dir, args.hub_model_id)
+    #         # Upload the checkpoint to Hugging Face Hub
+    #         self.upload_to_hub(checkpoint_dir, args.hub_model_id)
 
-    def upload_to_hub(self, checkpoint_dir, hub_model_id):
-        api = HfApi()
-        api.upload_folder(
-            folder_path=checkpoint_dir,
-            repo_id=hub_model_id,
-            repo_type="model",
-        )
-        print(f"Uploaded checkpoint {checkpoint_dir} to Hugging Face Hub")
+    # def upload_to_hub(self, checkpoint_dir, hub_model_id):
+    #     api = HfApi()
+    #     api.upload_folder(
+    #         folder_path=checkpoint_dir,
+    #         repo_id=hub_model_id,
+    #         repo_type="model",
+    #     )
+    #     print(f"Uploaded checkpoint {checkpoint_dir} to Hugging Face Hub")
 
 # Function to get the latest checkpoint
 def get_latest_checkpoint(checkpoint_dir):
@@ -678,7 +678,7 @@ def custom_data_collator(features):
     batch = {k: [d[k] for d in features] for k in features[0].keys()}
 
     # Stack image embeddings
-    batch['image_embeddings'] = torch.stack(batch['image_embeddings'])
+    batch['image_embeddings'] = torch.stack(batch['image_embeddings']).to(torch.float16)
 
     # Pad the sequences
     batch['input_ids'] = torch.nn.utils.rnn.pad_sequence(batch['input_ids'], batch_first=True, padding_value=tokenizer.pad_token_id)
@@ -771,6 +771,12 @@ loaded_projector_state = torch.load(latest_checkpoint + '/image_projector.pth')
 verify_projector_weight_changes(loaded_projector_state, initial_projector_state)
 
 # trainer.push_to_hub()
+api = HfApi()
+api.upload_folder(
+    folder_path=latest_checkpoint,
+    repo_id=hf_adapter_repo,
+    repo_type="model",
+)
 # !cp -r results_phi-3_5 /content/drive/MyDrive/multimodal_llm/phi-3_5
 
 # Add this function after your CustomTextGenerator class
@@ -828,7 +834,7 @@ class CustomTextGenerator:
         if not isinstance(image_embedding, torch.Tensor):
             image_embedding = torch.tensor(image_embedding)
         # image_embedding = image_embedding.to(self.model.device).unsqueeze(0)  # Add batch dimension
-        image_embedding = image_embedding.to(self.model.device).to(next(self.model.parameters()).dtype)
+        image_embedding = image_embedding.to(self.model.device)#.to(next(self.model.parameters()).dtype)
 
         # Generate text
         outputs = self.model.generate(
@@ -874,7 +880,7 @@ def test_inference(model, tokenizer, image_embedding):
     print(f"Projector weight change: {weight_change}")
 
     # Ensure the model is in the correct precision (e.g., float16)
-    model = model.to(next(model.parameters()).dtype)
+    # model = model.to(next(model.parameters()).dtype)
 
     generator = CustomTextGenerator(model=model, tokenizer=tokenizer)
     input_text = """<|system|> You are a helpful assistant.<|end|><|user|> Given the following information, provide a detailed and accurate response:
@@ -973,7 +979,7 @@ def evaluate_loaded_model(model, tokenizer, eval_dataset, device):
             batch = {
                 'input_ids': batch['input_ids'].to(device).int(),
                 'attention_mask': batch['attention_mask'].to(device).int(),
-                'image_embeddings': batch['image_embeddings'].to(device).to(torch.float16),
+                'image_embeddings': batch['image_embeddings'], #.to(device).to(torch.float16),
                 'labels': batch['labels'].to(device).int()
             }
 

@@ -48,7 +48,7 @@ def load_model_with_lora_and_projector(checkpoint_path, device, bnb_config=None,
             **common_kwargs
         )
     else:
-        device_map = {"": device}  # This maps all modules to the specified device
+        device_map = {"": 0}  # This maps all modules to the specified device
         model = Phi3WithProjector.from_pretrained(
             checkpoint_path,
             quantization_config=bnb_config,
@@ -145,7 +145,7 @@ class MultimodalInference:
         self.clip_model, self.clip_preprocess = clip.load(clip_model_name, device=self.device)
 
         # Initialize the audio transcription pipeline if needed
-        # self.audio_pipeline = AudioTranscriptionPipeline()
+        self.audio_pipeline = AudioTranscriptionPipeline()
 
     def debug_print(self, *args, **kwargs):
         if self.debug:
@@ -170,12 +170,12 @@ class MultimodalInference:
         dialogue = [{"role": "system", "content": "You are a helpful assistant."}]
 
         prompt = f"Given the following information, provide a detailed and accurate response:\n{text_input}\n"
-        # if image_path is not None:
-        #     prompt += "[An image is provided for this task.]\n"
+        if image_path is not None:
+            prompt += "[An image is provided for this task.]\n"
 
-        # if audio_file is not None:
-            # audio_transcription = self.process_audio(audio_file)
-            # prompt += f"[AUDIO TRANSCRIPTION: {audio_transcription}]\n"
+        if audio_file is not None:
+            audio_transcription = self.process_audio(audio_file)
+            prompt += f"[AUDIO TRANSCRIPTION: {audio_transcription}]\n"
 
         dialogue.append({"role": "user", "content": prompt})
 
@@ -192,7 +192,7 @@ class MultimodalInference:
         image_embedding = None
         if image_path is not None:
             image_embedding = self.process_image(image_path)
-            image_embedding = image_embedding.to(self.device).to(next(self.model.parameters()).dtype)
+            # image_embedding = image_embedding.to(self.device).to(next(self.model.parameters()).dtype)
 
             self.debug_print(f"multimodal_inference input_ids: {input_ids.size()}")
             self.debug_print(f"multimodal_inference image_embedding: {image_embedding.size()}")
