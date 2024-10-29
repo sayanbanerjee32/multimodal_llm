@@ -143,8 +143,8 @@ bnb_config = BitsAndBytesConfig(
 )
 peft_inference = MultimodalInference(
     model_name='microsoft/Phi-3.5-mini-instruct',
-    tokenizer_name='microsoft/Phi-3.5-mini-instruct',
-    peft_model_path="/content/drive/MyDrive/multimodal_llm/phi-3_5/multimodal-phi3_5-mini-instruct-llava_adapter/checkpoint-12",  # Adjust this path as needed
+    tokenizer_name= "sayanbanerjee32/multimodal-phi3_5-mini-instruct-llava_adapter",
+    peft_model_path= "sayanbanerjee32/multimodal-phi3_5-mini-instruct-llava_adapter",
     bnb_config=bnb_config,  # Pass the bnb_config to the inference class
     debug=False  # Enable debug mode to see more information
 )

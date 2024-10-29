@@ -1,10 +1,26 @@
 import gradio as gr
 from multimodal_inference import MultimodalInference
+import torch
+from transformers import BitsAndBytesConfig
 
-# Initialize the inference class
+
+bnb_4bit_compute_dtype = "float16"
+bnb_4bit_quant_type = "nf4"
+use_4bit = True
+use_nested_quant = False
+compute_dtype = getattr(torch, bnb_4bit_compute_dtype)
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=use_4bit,
+    bnb_4bit_quant_type=bnb_4bit_quant_type,
+    bnb_4bit_compute_dtype=compute_dtype,
+    bnb_4bit_use_double_quant=use_nested_quant,
+)
 inference = MultimodalInference(
-    model_name='sayanbanerjee32/multimodal-phi3-4k-instruct-llava',
-    tokenizer_name='sayanbanerjee32/multimodal-phi3-4k-instruct-llava'
+    model_name='microsoft/Phi-3.5-mini-instruct',
+    tokenizer_name= "sayanbanerjee32/multimodal-phi3_5-mini-instruct-llava_adapter",
+    peft_model_path= "sayanbanerjee32/multimodal-phi3_5-mini-instruct-llava_adapter",
+    bnb_config=bnb_config,  # Pass the bnb_config to the inference class
+    debug=False  # Enable debug mode to see more information
 )
 
 def process_input(message, image, audio, history):
