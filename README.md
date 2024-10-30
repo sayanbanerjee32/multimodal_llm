@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project creates a multi-modal Large Language Model (LLM) based on the Phi-3.5 architecture, capable of processing text, image, and audio inputs. The model is fine-tuned using the Instruct 150k dataset and incorporates CLIP for image embedding.
+This project creates a multi-modal Large Language Model (LLM) based on the Phi-3.5 architecture, capable of processing text, image, and audio inputs. The model is fine-tuned using the Instruct 150k dataset and incorporates CLIP for image embedding. Audio transcription is performed using Whisper model.
 
 ### Key Features
 
@@ -17,37 +17,48 @@ This project creates a multi-modal Large Language Model (LLM) based on the Phi-3
 
 1. **Base Model**: Uses Phi-3.5-mini-instruct with 4-bit quantization
 2. **Image Processing**: 
-   - CLIP generates image embeddings. CLIP embeddings were generated beforehand for training using the 
-   - Custom projection layer maps CLIP embeddings to Phi-3.5 input dimensions
+   - CLIP generates image embeddings. CLIP embeddings were generated beforehand for training using [`instruct150k_image_embedding_clip.ipynb`](https://github.com/sayanbanerjee32/multimodal_llm/blob/main/instruct150k_image_embedding_clip.ipynb) and persisted to be used later.
+   - Custom projection layer maps CLIP embeddings to Phi-3.5 input dimensions. The Image projector architecture is available at [`phi3_with_projector.py`](https://github.com/sayanbanerjee32/multimodal_llm/blob/main/phi3_with_projector.py)
 3. **Audio Processing**:
    - Whisper model handles speech-to-text conversion
    - Automatic English transcription
+   - Audio processing pipeline is available at [`audio_pipeline.py`](https://github.com/sayanbanerjee32/multimodal_llm/blob/main/audio_pipeline.py)
 4. **QLoRA Adaptation**: 
    - 4-bit quantization with float16 compute type
    - Nested quantization support
-5. **Custom Phi3.5WithProjector Class**: 
+5. **Custom Phi3WithProjector Class**: 
    - Integrates image projector with Phi-3.5 model
    - Handles multi-modal inputs seamlessly
+   - The model architechture is available at [`phi3_with_projector.py`](https://github.com/sayanbanerjee32/multimodal_llm/blob/main/phi3_with_projector.py)
 
-## Gradio App Interface
+## Huggingface Spaces Gradio App
 
-The project includes a user-friendly Gradio interface with:
+A recorded demo of the app is available at [YouTube](https://youtu.be/4mX8-28CjjY])  
+![image](https://github.com/user-attachments/assets/18e003e9-e055-4803-8791-f78e46638260)
+
+The project is deployed as [Huggingface Spaces Gradio App](https://huggingface.co/spaces/sayanbanerjee32/multimodal_llm_chatbot) with following features:
 
 1. **Image Input**:
    - Upload functionality
    - Example images with predefined questions
 2. **Dual Input Methods**: 
-   - Text input with Enter key support
-   - Voice input with audio recording
+   - Text input
+   - Voice input with audio recording  
+     ![image](https://github.com/user-attachments/assets/e409957c-f86d-47ce-8d4d-b1797761bfd2)
+
 3. **Interface Features**:
    - Tabbed interface for text/voice input
    - Conversation history display
    - Clear conversation button
-   - Pre-loaded examples
+   - Pre-loaded examples  
+     ![image](https://github.com/user-attachments/assets/e3afd7bd-b8af-4add-a9b9-444dbdca6ac7)
+
 4. **Processing Capabilities**:
    - Combined text-image processing
    - Voice-to-text conversion
    - Multi-turn conversations
+  
+
 
 ## Performance Metrics
 
