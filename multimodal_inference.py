@@ -241,4 +241,16 @@ class MultimodalInference:
         if generated_text.startswith(input_text_clean):
             generated_text = generated_text[len(input_text_clean):].strip()
         
+        # Remove any remaining special tokens
+        special_tokens_to_remove = [
+            "<|end_of_document|>",
+            "<|end|>",
+            "<|endoftext|>",
+            "<|assistant|>",
+            "<|user|>",
+            "<|system|>"
+        ]
+        for token in special_tokens_to_remove:
+            generated_text = generated_text.replace(token, "").strip()
+        
         return generated_text

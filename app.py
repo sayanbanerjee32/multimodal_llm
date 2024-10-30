@@ -2,6 +2,7 @@ import gradio as gr
 from multimodal_inference import MultimodalInference
 import torch
 from transformers import BitsAndBytesConfig
+import os
 
 
 bnb_4bit_compute_dtype = "float16"
@@ -23,43 +24,57 @@ inference = MultimodalInference(
     debug=False
 )
 
-def process_input(message, image, audio, history):
+def process_input(message, image, audio=None, history=None):
     history = history or []
-    if not message:
-        return "", history
-    generated_text = inference.multimodal_inference(
-        message,
-        image_path=image,
-        audio_file=audio
-    )
     
-    if generated_text.startswith(message):
-        generated_text = generated_text[len(message):].strip()
+    # Allow audio-only submissions (when there's audio but no text message)
+    if audio and not message:
+        message = "Please describe what you hear in the audio."
     
-    history.append((message, generated_text))
-    return "", history
+    # Check for either image or audio
+    if not (image or audio):
+        return "", "", history  # Return empty message, empty audio, unchanged history
+    
+    print(f"Processing input with:")
+    print(f"Message: {message}")
+    print(f"Image path: {image}")
+    print(f"Audio: {audio}")
+    
+    try:
+        generated_text = inference.multimodal_inference(
+            message,
+            image_path=image,
+            audio_file=audio
+        )
+        
+        new_history = history + [(message, generated_text)]
+        return "", None, new_history  # Return empty message, clear audio, updated history
+    except Exception as e:
+        print(f"Error in process_input: {str(e)}")
+        new_history = history + [(message, f"Error processing request: {str(e)}")]
+        return "", None, new_history  # Return empty message, clear audio, updated history
 
-# Define example pairs
+# Define example pairs with absolute paths
 examples = [
     [
-        "examples/1.png",  # path to example image
-        "Can you describe the main features of this image for me?"
+        "Can you describe the main features of this image for me?",
+        os.path.join(os.getcwd(), "examples", "1.png")
     ],
     [
-        "examples/2.png",  # path to example image
-        "Why might these zebras choose to stay together in this environment?"
+        "Why might these zebras choose to stay together in this environment?",
+        os.path.join(os.getcwd(), "examples", "2.png")
     ],
     [
-        "examples/3.png",  # path to example image
-        "What color is the backsplash in the kitchen?"
+        "What color is the backsplash in the kitchen?",
+        os.path.join(os.getcwd(), "examples", "3.png")
     ],
     [
-        "examples/4.png",  # path to example image
-        "What type of physical and social benefits can be gained from the activity shown in the image?"
-    ]
+        "What type of physical and social benefits can be gained from the activity shown in the image?",
+        os.path.join(os.getcwd(), "examples", "4.png")
+    ],
     [
-        "examples/5.png",  # path to example image
-        "How many police officers are riding horses in the image?"
+        "How many police officers are riding horses in the image?",
+        os.path.join(os.getcwd(), "examples", "5.png")
     ]
 ]
 
@@ -84,31 +99,52 @@ with gr.Blocks() as iface:
                             show_label=True,
                             container=True
                         )
+                    with gr.Row():
                         submit_btn = gr.Button("Submit", variant="primary")
                 with gr.TabItem("Voice Question"):
-                    audio_input = gr.Audio(label="Or ask your question by voice", type="filepath")
+                    with gr.Row():
+                        audio_input = gr.Audio(label="Or ask your question by voice", 
+                                               type="filepath")
+                    with gr.Row():
+                        audio_submit = gr.Button("Submit Voice Question", 
+                                                 variant="primary")
  
-    # Add examples
+    # Add examples with proper handling
     gr.Examples(
         examples=examples,
-        inputs=[image_input, text_input],
-        outputs=[chatbot],
+        inputs=[text_input, image_input],
+        outputs=[text_input, audio_input, chatbot],
         fn=process_input,
-        cache_examples=True,
+        cache_examples=False,
+        run_on_click=True,
+        preprocess=True,
+        postprocess=True
     )
 
     # Handle text input submission
-    text_input.submit(process_input, [text_input, image_input, audio_input, chatbot], [text_input, chatbot])
-    submit_btn.click(process_input, [text_input, image_input, audio_input, chatbot], [text_input, chatbot])
+    text_input.submit(
+        process_input, 
+        [text_input, image_input, audio_input, chatbot], 
+        [text_input, audio_input, chatbot]
+    )
+    submit_btn.click(
+        process_input, 
+        [text_input, image_input, audio_input, chatbot], 
+        [text_input, audio_input, chatbot]
+    )
     
     # Handle audio input
-    audio_input.change(process_input, [audio_input, image_input, audio_input, chatbot], [audio_input, chatbot])
+    audio_input.change(
+        process_input, 
+        [text_input, image_input, audio_input, chatbot], 
+        [text_input, audio_input, chatbot]
+    )
     
     # Handle clear button
     clear.click(lambda: None, None, chatbot, queue=False)
 
-# for collab only
-iface.launch(debug = True)
+# # for collab only
+# iface.launch(debug = True)
 
-# if __name__ == "__main__":
-#     iface.launch()
+if __name__ == "__main__":
+    iface.launch()
