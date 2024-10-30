@@ -1,97 +1,67 @@
-# Multi-Modal LLM Project: Phi-3 with Image Understanding
+# Multi-Modal LLM Project: Phi-3.5 with Image Understanding
 
 ## Project Overview
 
-This project aims to create a multi-modal Large Language Model (LLM) based on the Phi-3 architecture, capable of processing both text and image inputs. The model is fine-tuned using the Instruct 150k dataset and incorporates CLIP for image embedding.
+This project creates a multi-modal Large Language Model (LLM) based on the Phi-3.5 architecture, capable of processing text, image, and audio inputs. The model is fine-tuned using the Instruct 150k dataset and incorporates CLIP for image embedding.
 
 ### Key Features
 
-- Base Model: Phi-3 (microsoft/Phi-3.5-mini-instruct)
+- Base Model: Phi-3.5 (microsoft/Phi-3.5-mini-instruct)
 - Image Processing: CLIP embeddings with custom projection layer
+- Audio Processing: Whisper model for speech-to-text
 - Training Method: QLoRA (Quantized Low-Rank Adaptation)
 - Dataset: Instruct 150k
 - Deployment: Hugging Face Spaces with Gradio interface
 
 ## Detailed Architecture Description
 
-1. **Base Model**: We use the Phi-3.5-mini-instruct model as our foundation.
+1. **Base Model**: Uses Phi-3.5-mini-instruct with 4-bit quantization
 2. **Image Processing**: 
-   - CLIP is used to generate image embeddings.
-   - A custom projection layer maps CLIP embeddings to Phi-3 input dimensions.
-3. **QLoRA Adaptation**: 
-   - Enables efficient fine-tuning with reduced memory footprint.
-   - Allows for training on consumer-grade GPUs.
-4. **Custom Phi3WithProjector Class**: 
-   - Integrates the image projector with the Phi-3 model.
-   - Handles both text and image inputs seamlessly.
-
-## Performance Metrics and Benchmarks
-
-### Training Logs
-
-```
-# Paste training logs here
-```
-
-### Evaluation Results
-
-Pre-merge loss: [Insert value here]
-Post-merge loss: [Insert value here]
+   - CLIP generates image embeddings. CLIP embeddings were generated beforehand for training using the 
+   - Custom projection layer maps CLIP embeddings to Phi-3.5 input dimensions
+3. **Audio Processing**:
+   - Whisper model handles speech-to-text conversion
+   - Automatic English transcription
+4. **QLoRA Adaptation**: 
+   - 4-bit quantization with float16 compute type
+   - Nested quantization support
+5. **Custom Phi3.5WithProjector Class**: 
+   - Integrates image projector with Phi-3.5 model
+   - Handles multi-modal inputs seamlessly
 
 ## Gradio App Interface
 
-The project includes a user-friendly Gradio interface for interacting with the multimodal AI assistant. The interface allows users to upload images and ask questions about them using either text or voice input. Here are the key features of the Gradio app:
+The project includes a user-friendly Gradio interface with:
 
-1. **Image Upload**: Users can upload an image for analysis.
+1. **Image Input**:
+   - Upload functionality
+   - Example images with predefined questions
 2. **Dual Input Methods**: 
-   - Text input: Users can type their questions about the image.
-   - Voice input: Users can ask questions verbally, which are then processed by the model.
-3. **Conversation History**: The app maintains a chat-like interface, displaying the history of questions and answers.
-4. **Clear Conversation**: A button to clear the conversation history and start fresh.
-5. **Multimodal Processing**: The backend uses the `MultimodalInference` class to process text, image, and potentially audio inputs together.
+   - Text input with Enter key support
+   - Voice input with audio recording
+3. **Interface Features**:
+   - Tabbed interface for text/voice input
+   - Conversation history display
+   - Clear conversation button
+   - Pre-loaded examples
+4. **Processing Capabilities**:
+   - Combined text-image processing
+   - Voice-to-text conversion
+   - Multi-turn conversations
 
-The app is designed to be intuitive and accessible, allowing users to easily interact with the advanced multimodal AI model without needing technical expertise.
+## Performance Metrics
 
-[Insert screenshot of Gradio app here]
+### Training Configuration
+- Compute Type: float16
+- Quantization: 4-bit
+- Quantization Type: NF4
+- Nested Quantization: Supported
 
-This interface demonstrates the practical application of the multimodal LLM, showcasing its ability to understand and respond to queries about visual content in a conversational manner.
+### Model Evaluation
+- Pre-merge Projector Weight Change: ~2.87
+- Post-merge Projector Weight Change: ~5.07
 
-## Audio Processing Pipeline
 
-The project includes an audio processing pipeline that enables the model to handle speech input alongside text and images. This feature enhances the multimodal capabilities of the system, allowing for a more versatile user interaction.
-
-### Key Components
-
-1. **AudioTranscriptionPipeline**:
-   - Utilizes the Whisper model from OpenAI for speech-to-text conversion.
-   - Supports loading and processing of audio files.
-   - Transcribes speech to text for further processing by the main model.
-
-2. **Integration with MultimodalInference**:
-   - The `MultimodalInference` class is designed to incorporate audio input.
-   - Audio files can be passed alongside text and image inputs for comprehensive multimodal analysis.
-
-### Features
-
-- **Model Flexibility**: Uses the "openai/whisper-base" model by default, but can be configured to use other Whisper variants.
-- **GPU Acceleration**: Automatically utilizes CUDA if available for faster processing.
-- **Sample Rate Handling**: Processes audio at a 16kHz sample rate, which is standard for many speech recognition tasks.
-- **Seamless Integration**: The audio transcription is incorporated into the main prompt for the multimodal model, allowing for contextual understanding of spoken content alongside visual and textual inputs.
-
-### Usage in Multimodal Context
-
-When an audio file is provided to the `multimodal_inference` method:
-1. The audio is transcribed using the Whisper model.
-2. The transcription is added to the prompt sent to the main language model.
-3. This allows the model to consider spoken content in its response generation, alongside any text or image inputs.
-
-### Current Implementation Status
-
-As of the latest update, the audio processing functionality is implemented but commented out in the `MultimodalInference` class. To fully enable this feature:
-1. Uncomment the `AudioTranscriptionPipeline` initialization in the `MultimodalInference` constructor.
-2. Uncomment the audio processing section in the `multimodal_inference` method.
-
-This modular design allows for easy activation of the audio processing capabilities when needed, while maintaining flexibility in the system's configuration.
 
 ## Challenges Faced During Development
 
