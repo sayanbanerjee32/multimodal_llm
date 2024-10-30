@@ -60,18 +60,10 @@ The project is deployed as [Huggingface Spaces Gradio App](https://huggingface.c
   
 
 
-## Performance Metrics
+## Training Medhodology
 
-### Training Configuration
-- Compute Type: float16
-- Quantization: 4-bit
-- Quantization Type: NF4
-- Nested Quantization: Supported
-
-### Model Evaluation
-- Pre-merge Projector Weight Change: ~2.87
-- Post-merge Projector Weight Change: ~5.07
-
+The training script is available at (`phi_3_QLoRA_instruct150k.ipynb`)[https://github.com/sayanbanerjee32/multimodal_llm/blob/main/phi_3_QLoRA_instruct150k.ipynb]
+1. 
 
 
 ## Challenges Faced During Development
