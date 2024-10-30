@@ -145,7 +145,12 @@ with gr.Blocks() as iface:
     )
     
     # Handle clear button
-    clear.click(lambda: None, None, chatbot, queue=False)
+    clear.click(
+        lambda: (None, None, None, []),  # Return None for image, text, audio, and empty list for chat
+        None,  
+        [image_input, text_input, audio_input, chatbot],  # Clear image, text, audio, and chat
+        queue=False
+    )
 
 # # for collab only
 # iface.launch(debug = True)
