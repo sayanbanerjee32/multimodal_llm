@@ -60,40 +60,344 @@ The project is deployed as [Huggingface Spaces Gradio App](https://huggingface.c
   
 
 
-## Training Medhodology
+## Training Methodology
 
-The training script is available at (`phi_3_QLoRA_instruct150k.ipynb`)[https://github.com/sayanbanerjee32/multimodal_llm/blob/main/phi_3_QLoRA_instruct150k.ipynb]
-1. 
+The training script is available at [`phi_3_QLoRA_instruct150k.ipynb`](https://github.com/sayanbanerjee32/multimodal_llm/blob/main/phi_3_QLoRA_instruct150k.ipynb)
 
+1. **Model Configuration**
+   - Base Model: microsoft/Phi-3.5-mini-instruct
+   - Tokenizer: AutoTokenizer with left-side padding
+   - Device: CUDA-enabled GPU
+
+2. **QLoRA Training Setup**
+   - LoRA Rank (r): 16
+   - LoRA Alpha: 16
+   - LoRA Dropout: 0.05
+   - Quantization: 4-bit (NF4)
+   - Compute Type: float16
+   - Nested Quantization: Disabled
+
+3. **Training Parameters**
+   - Epochs: 1
+   - Batch Size: 8 (per device)
+   - Gradient Accumulation Steps: 4
+   - Learning Rate: 5e-4
+   - Weight Decay: 0.0
+   - Optimizer: AdamW (torch)
+   - LR Scheduler: Linear with 10% warmup
+   - Max Gradient Norm: 1.0
+   - Gradient Checkpointing: Enabled
+
+4. **Dataset Processing**
+   - Train vs Test split: 95% vs 5%. However, only 5% of the training data was used for training.
+   - Max Sequence Length: 256 tokens
+   - Custom Data Collator for:
+     - Image embedding stacking
+     - Input sequence padding
+     - Attention mask generation
+     - Label padding
+
+5. **Evaluation Strategy**
+   - Evaluation Steps: Every 50 steps
+   - Save Steps: Every 25 steps
+   - Logging Steps: Every 25 steps
+   - Model evaluation before and after merging
+   - Loss tracking for performance monitoring
+
+6. **Custom Components**
+   - Image Projector Layer for CLIP embeddings
+   - Custom Text Generator for inference
+   - Checkpoint management system
+   - Weight change detection for projector layer
+
+7. **Model Saving and Checkpointing**
+   - Model published at: [multimodal-phi3_5-mini-instruct-llava_adapter](https://huggingface.co/sayanbanerjee32/multimodal-phi3_5-mini-instruct-llava_adapter)
+   
+   a. **Checkpoint Components**
+      - Base Phi-3.5 Model State
+      - Tokenizer Configuration
+      - Image Projector Weights
+      - LoRA Adapter Weights
+      - Trainer State
+   
+   b. **Saving Strategy**
+      - Automatic checkpoint creation every 25 steps
+      - Only latest checkpoint retained (previous checkpoints removed)
+      - Checkpoint directory structure:
+        ```
+        checkpoint-{step}/
+        ├── config.json
+        ├── image_projector.pth
+        ├── lora_weights.pt
+        ├── model.safetensors
+        ├── tokenizer_config.json
+        └── trainer_state.json
+        ```
+   
+   c. **Component-wise Saving**
+      - **Base Model**
+        - Saved using HuggingFace's save_pretrained
+        - Includes model architecture and weights
+        - Preserves model configuration
+      
+      - **Image Projector**
+        - Saved as separate PyTorch state dict
+        - Includes weight change monitoring
+        - Stores mean and std statistics of weights
+        - Gradient norm tracking for debugging
+      
+      - **LoRA Weights**
+        - Separate storage for LoRA components:
+          - LoRA A matrices
+          - LoRA B matrices
+          - Scaling factors
+          - Embedding adaptations (if present)
+        - CPU offloading before saving
+      
+      - **Tokenizer**
+        - Complete tokenizer configuration
+        - Vocabulary and special tokens
+      
+      - **Training State**
+        - JSON format for trainer state
+        - Includes global step and optimization state
+        - Enables training resumption
+   
+   d. **Quality Assurance**
+      - Weight statistics logging before saving
+      - Gradient tracking for projector layers
+      - Explicit verification of saved components
+      - Checkpoint completion validation
+
+8. **Model Loading from Checkpoint**
+   - Model loaded from: [multimodal-phi3_5-mini-instruct-llava_adapter](https://huggingface.co/sayanbanerjee32/multimodal-phi3_5-mini-instruct-llava_adapter)
+
+   a. **Device-Specific Loading**
+      
+      - GPU Configuration:
+        - Half precision (float16)
+        - 4-bit quantization support
+        - Eager attention implementation
+        - Automatic device mapping to CUDA
+
+   b. **Component Loading Process**
+      - **Base Model**
+        - Loaded via Phi3WithProjector.from_pretrained
+        - Includes model architecture and configuration
+        - Quantization applied if on GPU
+      
+      - **LoRA Weights**
+        - Two-step loading process:
+          1. Load raw state dictionary
+          2. Filter and remap weights to model structure
+        - Components loaded:
+          - LoRA A matrices (default weights)
+          - LoRA B matrices (default weights)
+          - Scaling factors
+        - Strict=False loading to allow partial updates
+      
+      - **Mode-Specific Preparation**
+        - Training Mode:
+          - Preserves 4-bit quantization
+          - Maintains training capabilities
+        
+        - Inference Mode:
+          - Prepares LinearFP4 modules
+          - Optimizes for inference
+          - Converts necessary components
+
+   c. **Loading Verification**
+      - Tracks number of loaded LoRA weights
+      - Monitors scaling factor loading
+      - Reports total LoRA modules processed
+      - Warns about missing weights
 
 ## Challenges Faced During Development
 
-Throughout the development of this multi-modal LLM project, we encountered several significant challenges:
+1. **Projector Training Issues**
+   - **Problem Description**
+     - Initially, projector weights remained static during training
+     - No gradient updates were observed for projector layers
+     - CLIP embeddings weren't being properly adapted to model space
+   
+   - **Technical Analysis**
+     - Root cause identified:
+       ```python
+       # PEFT configuration was freezing all non-LoRA weights
+       peft_config = LoraConfig(
+           task_type=TaskType.CAUSAL_LM,
+           inference_mode=False,
+           r=lora_r,
+           lora_alpha=lora_alpha,
+           lora_dropout=lora_dropout
+       )
+       ```
+     - Issues found:
+       - PEFT's default behavior freezes all base model weights
+       - Projector layer was considered part of base model
+       - No gradient computation for projector parameters
+   
+   - **Solution Implemented**
+     - Explicitly set projector to training mode:
+       ```python
+       # Ensure projector training
+       model.projector.train()
+       for param in model.projector.parameters():
+           param.requires_grad = True
+       ```
+     - Added gradient tracking and monitoring
+     - Implemented weight change detection
 
-1. **Limited Training Iterations**: 
-   - We initially trained the model for only 10 iterations, which proved insufficient for proper convergence.
-   - This limited training led to suboptimal performance and difficulties in evaluating the model's true capabilities.
+2. **LoRA Adapter Merging Issues**
+   - **Problem Description**
+     - Significant performance degradation after merging LoRA weights with base model
+     - Loss increased from ~0.18 (with adapter) to ~5.07 (after merge)
+     - Merged model showed inconsistent responses
+   
+   - **Technical Analysis**
+     - Original approach:
+       ```python
+       # Problematic merging approach
+       merged_model = model.merge_and_unload()
+       merged_model.save_pretrained("merged_model")
+       ```
+     - Issues identified:
+       - Quantization precision loss during merging
+       - Weight scaling inconsistencies
+       - Gradient information loss
+   
+   - **Solution Implemented**
+     - Kept base model and LoRA weights separate
+     - Modified deployment strategy:
+       1. Load base model with 4-bit quantization
+       2. Load LoRA weights separately
+       3. Apply weights during runtime
+     - Required GPU deployment instead of CPU
+     - Added explicit weight verification during loading
 
-2. **Performance Degradation After Merging**:
-   - We observed a significant increase in loss after merging the model (Pre-merge loss: 16.06, Post-merge loss: 21.15).
-   - This degradation highlighted the need for more robust merging strategies and potentially longer training periods.
+3. **Deployment Impact**
+   - **Infrastructure Changes**
+     - Shifted from CPU to GPU deployment
+     - Required Hugging Face Space with GPU support
+     - Increased memory requirements
+   
+   - **Performance Benefits**
+     - Maintained original model performance (~0.18 loss)
+     - Preserved 4-bit quantization advantages
+     - Enabled efficient weight loading
+   
+   - **Trade-offs**
+     - Higher deployment costs
+     - More complex loading process
+     - Increased startup time
+     - Required careful memory management
 
-3. **Flash Attention Integration**:
-   - Warnings about the absence of the `flash-attention` package indicated potential performance improvements that were not realized.
+4. **Lessons Learned**
+   - LoRA merging isn't always optimal for quantized models
+   - Separate weight management can outperform merged models
+   - GPU deployment essential for maintaining model quality
+   - Importance of monitoring loss metrics during deployment
+   - PEFT configurations can unexpectedly freeze custom layers
+   - Explicit gradient tracking essential for custom components
+   - Weight change monitoring crucial for validation
+   - Custom layers may need manual training mode setting
 
-4. **Multi-modal Input Handling**:
-   - Integrating image embeddings with text inputs required careful design of the `Phi3WithProjector` class and custom data collators.
+5. **Checkpoint Resumption Issues (Unresolved)**
+   - **Problem Description**
+     - Unable to resume training from saved checkpoints
+     - Critical for Colab environment due to frequent disconnections
+     - Limits effective training duration and data exposure
+     - Results in suboptimal model performance
+   
+   - **Technical Analysis**
+     - Issues encountered:
+       ```python
+       # Loading checkpoint attempts fail with state mismatches
+       trainer = Trainer(
+           model=model,
+           args=training_args,
+           train_dataset=train_dataset,
+           resume_from_checkpoint=checkpoint_path  # Fails to properly resume
+       )
+       ```
+     - Complications:
+       - Mismatch between saved and loaded optimizer states
+       - LoRA weight restoration inconsistencies
+       - Projector state synchronization problems
+       - Loss of training progress tracking
+   
+   - **Current Impact**
+     - Limited training duration (~10-15 hours per session)
+     - Reduced training data exposure
+     - Model outputs often misaligned with input images
+     - Performance bottleneck for model improvement
+   
+   - **Attempted Solutions**
+     - Custom checkpoint loading logic
+     - State dict manipulation
+     - Separate handling of LoRA and projector states
+     - All attempts unsuccessful so far
+   
+   - **Workaround Strategy**
+     - Complete training within single Colab session
+     - Use smaller dataset for initial development
+     - Focus on architecture validation
+     - Accept suboptimal performance temporarily
 
-These challenges underscored the complexity of developing multi-modal AI systems and highlighted areas for future improvement and optimization.
+6. **Future Work Required**
+   - Implement robust checkpoint resumption
+   - Extend training duration capability
+   - Increase training data exposure
+   - Improve image-text alignment in outputs
+   - Consider alternative training environments
+   - Develop better state preservation methods
 
 ## Potential Improvements and Future Work
 
-1. **Extended Training**: Increase the number of training iterations for better performance.
-2. **Hyperparameter Tuning**: Optimize learning rates, batch sizes, and other hyperparameters.
-3. **Larger Dataset**: Incorporate more diverse and extensive datasets for improved generalization.
-4. **Model Architecture Enhancements**: 
-   - Experiment with different projection layer architectures.
-   - Explore alternative image embedding models beyond CLIP.
-5. **Multi-modal Pretraining**: Implement pretraining tasks that jointly learn from text and images.
-6. **Evaluation on Downstream Tasks**: Assess performance on specific multi-modal tasks like VQA or image captioning.
-7. **Optimization for Inference**: Implement techniques like quantization for faster inference.
+1. **Training Infrastructure**
+   - Resolve checkpoint resumption for interrupted training sessions
+   - Implement distributed training support
+   - Explore cloud platforms beyond Colab for longer training runs
+   - Add training progress visualization and monitoring
+
+2. **Quality Improvements**
+   - Better image-text alignment in responses
+   - Improve response coherence and relevance
+   - Implement content filtering
+   - Add support for multiple languages
+
+3. **Model Architecture**
+   - Experiment with different projection layer architectures
+   - Explore alternative image embedding models beyond CLIP
+   - Implement flash attention for better performance (This was not suppoted in collab)
+   - Add support for larger context windows
+
+4. **Training Process**
+   - Extend training iterations for better performance
+   - Optimize hyperparameters (learning rates, batch sizes)
+   - Incorporate larger proportion of the present datasets
+
+5. **Model Deployment**
+   - Optimize CPU inference for wider accessibility
+   - Implement model pruning for size reduction
+   - Improve error handling and recovery
+   - Implement caching for frequent queries
+
+6. **Gradio Interface**
+   - Add batch processing capability
+   - Implement conversation memory management
+   - Add support for multiple images in conversation
+
+7. **Audio Processing**
+   - Add language selection for transcription
+   - Implement noise reduction
+   - Add support for longer audio clips
+   - Optimize audio processing pipeline
+   - Add audio response generation
+
+8. **Evaluation and Monitoring**
+   - Implement comprehensive evaluation metrics
+   - Add automated testing for model outputs
+   - Create benchmark suite for performance tracking
+   - Add monitoring for production deployment
+
