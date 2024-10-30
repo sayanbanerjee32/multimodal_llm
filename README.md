@@ -58,8 +58,6 @@ The project is deployed as [Huggingface Spaces Gradio App](https://huggingface.c
    - Voice-to-text conversion
    - Multi-turn conversations
   
-
-
 ## Training Methodology
 
 The training script is available at [`phi_3_QLoRA_instruct150k.ipynb`](https://github.com/sayanbanerjee32/multimodal_llm/blob/main/phi_3_QLoRA_instruct150k.ipynb)
@@ -400,4 +398,72 @@ The training script is available at [`phi_3_QLoRA_instruct150k.ipynb`](https://g
    - Add automated testing for model outputs
    - Create benchmark suite for performance tracking
    - Add monitoring for production deployment
+
+## Development Experience with Cursor + Claude
+
+### Benefits and Observations
+
+1. **Prompt-Driven Development**
+   - Majority of code was written through AI prompts
+   - Rapid prototyping and implementation
+   - Easy to explore multiple approaches
+   - Quick generation of boilerplate code
+   - Helpful for documentation generation
+
+2. **Problem-Solving Patterns**
+   - Claude often suggests workarounds rather than fundamental fixes
+   - Example: LoRA merging issue
+     - Initial suggestions focused on parameter tweaking
+     - Eventually needed complete architectural change
+   - Quick fixes can accumulate technical debt
+   - Important to push for root cause analysis
+
+3. **Code Understanding Challenges**
+   - Accepting complex generated code without understanding leads to:
+     - Difficulty in debugging
+     - Inconsistent implementations
+     - Redundant or unnecessary code
+     - Integration problems
+   - Required frequent code cleanup and refactoring
+   - Important to review and understand each generated segment
+
+4. **Code Oversight Importance**
+   - Loss of code oversight can become exponentially problematic
+   - Critical to maintain:
+     - Clear architecture vision
+     - Consistent coding patterns
+     - Documentation of design decisions
+     - Understanding of dependencies
+   - Regular code review and cleanup essential
+   - Technical debt can accumulate quickly
+
+### Key Learnings
+
+1. **Best Practices**
+   - Review and understand all generated code
+   - Question workarounds and seek root causes
+   - Maintain clear project structure
+   - Document architectural decisions
+   - Regular code cleanup sessions
+
+2. **Anti-Patterns to Avoid**
+   - Blindly accepting complex solutions
+   - Accumulating workarounds
+   - Losing architectural oversight
+   - Skipping code understanding
+   - Delayed cleanup and refactoring
+
+3. **Recommended Workflow**
+   - Start with clear problem definition
+   - Break down complex problems
+   - Review and understand generated code
+   - Test thoroughly before integration
+   - Regular cleanup and documentation
+   - Maintain architectural vision
+
+4. **Balance Points**
+   - Speed vs. Understanding
+   - Quick fixes vs. Proper solutions
+   - Feature addition vs. Code maintenance
+   - AI assistance vs. Developer control
 
