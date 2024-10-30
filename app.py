@@ -93,13 +93,11 @@ with gr.Blocks() as iface:
                     with gr.Row():
                         text_input = gr.Textbox(
                             label="Type your question here",
-                            placeholder="Press Enter to submit your question",
+                            placeholder="Press Shift+Enter to submit your question",
                             lines=3,
                             max_lines=3,
                             show_label=True,
-                            container=True,
-                            interactive=True,
-                            submit_on_enter=True  # Enable submission with just Enter
+                            container=True
                         )
                     with gr.Row():
                         submit_btn = gr.Button("Submit", variant="primary")
