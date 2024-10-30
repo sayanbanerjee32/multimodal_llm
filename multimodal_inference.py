@@ -179,13 +179,22 @@ class MultimodalInference:
 
         dialogue.append({"role": "user", "content": prompt})
 
-        input_text = self.tokenizer.apply_chat_template(dialogue, tokenize=False, add_generation_prompt=True)
+        # Get input text with special tokens
+        input_text_with_special = self.tokenizer.apply_chat_template(dialogue, tokenize=False, add_generation_prompt=True)
+        
+        # Get input text without special tokens for comparison
+        input_text_clean = self.tokenizer.decode(
+            self.tokenizer.encode(input_text_with_special), 
+            skip_special_tokens=True
+        )
 
-        print("Input text:")
-        print(input_text)
+        print("Input text (with special tokens):")
+        print(input_text_with_special)
+        print("\nInput text (without special tokens):")
+        print(input_text_clean)
 
         # Tokenize the input text
-        inputs = self.tokenizer(input_text, return_tensors="pt", padding=True, truncation=True)
+        inputs = self.tokenizer(input_text_with_special, return_tensors="pt", padding=True, truncation=True)
         input_ids = inputs["input_ids"].to(self.device)
         attention_mask = inputs["attention_mask"].to(self.device)
 
@@ -227,4 +236,9 @@ class MultimodalInference:
                 )
 
         generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Remove the clean input text from the beginning of generated text
+        if generated_text.startswith(input_text_clean):
+            generated_text = generated_text[len(input_text_clean):].strip()
+        
         return generated_text
