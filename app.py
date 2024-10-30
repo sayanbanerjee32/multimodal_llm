@@ -97,17 +97,23 @@ with gr.Blocks() as iface:
                             lines=3,
                             max_lines=3,
                             show_label=True,
-                            container=True
+                            container=True,
+                            interactive=True,
+                            submit_on_enter=True  # Enable submission with just Enter
                         )
                     with gr.Row():
                         submit_btn = gr.Button("Submit", variant="primary")
                 with gr.TabItem("Voice Question"):
                     with gr.Row():
-                        audio_input = gr.Audio(label="Or ask your question by voice", 
-                                               type="filepath")
+                        audio_input = gr.Audio(
+                            label="Or ask your question by voice", 
+                            type="filepath"
+                        )
                     with gr.Row():
-                        audio_submit = gr.Button("Submit Voice Question", 
-                                                 variant="primary")
+                        audio_submit = gr.Button(
+                            "Submit Voice Question", 
+                            variant="primary"
+                        )
  
     # Add examples with proper handling
     gr.Examples(
@@ -134,7 +140,7 @@ with gr.Blocks() as iface:
     )
     
     # Handle audio input
-    audio_input.change(
+    audio_submit.click(
         process_input, 
         [text_input, image_input, audio_input, chatbot], 
         [text_input, audio_input, chatbot]
